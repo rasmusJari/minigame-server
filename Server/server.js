@@ -19,6 +19,16 @@ app.use(bodyParser.json());
 // ---------------------
 const rounds = {}; // { minigame: { isActive, endsAt, scores, winner } }
 
+function formatRoundTopPlayer(minigameRound) {
+    // Determine top scorer
+    let topPlayer = null;
+    if (minigameRound.scores && Object.keys(minigameRound.scores).length > 0) {
+        const sorted = Object.entries(minigameRound.scores).sort((a, b) => b[1] - a[1]);
+        const [playerId, score] = sorted[0];
+        topPlayer = {playerId, score};
+    }
+}
+
 // ---------------------
 // Submit score endpoint
 // ---------------------
@@ -74,9 +84,21 @@ app.post("/submit-score", (req, res) => {
 });
 
 // ---------------------
+// Get round data (top scorer only)
+// ---------------------
+app.get("/round_top/:minigame", (req, res) => {
+    const minigame = req.params.minigame;
+    const round = rounds[minigame];
+
+    if (!round) return res.status(404).json({ error: "Round not found" });
+
+    res.json(formatRoundTopPlayer(round));
+});
+
+// ---------------------
 // Get round data endpoint
 // ---------------------
-app.get("/round/:minigame", (req, res) => {
+app.get("/round_all/:minigame", (req, res) => {
     const minigame = req.params.minigame;
     const round = rounds[minigame];
 
@@ -105,3 +127,5 @@ app.get("/round/:minigame", (req, res) => {
 app.listen(port, () => {
     console.log(`Game server running at http://localhost:${port}`);
 });
+
+
