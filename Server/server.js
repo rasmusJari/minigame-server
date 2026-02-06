@@ -1,10 +1,7 @@
-// =====================
-// Minimal Game Server
-// =====================
-
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
+
 const app = express();
 const port = 3000;
 
@@ -19,14 +16,25 @@ app.use(bodyParser.json());
 // ---------------------
 const rounds = {}; // { minigame: { isActive, endsAt, scores, winner } }
 
+// ---------------------
+// Helper to format round
+// ---------------------
 function formatRoundTopPlayer(minigameRound) {
     // Determine top scorer
     let topPlayer = null;
     if (minigameRound.scores && Object.keys(minigameRound.scores).length > 0) {
         const sorted = Object.entries(minigameRound.scores).sort((a, b) => b[1] - a[1]);
         const [playerId, score] = sorted[0];
-        topPlayer = {playerId, score};
+        topPlayer = { playerId, score };
     }
+
+    return {
+        roundId: minigameRound.roundId || "unknown",
+        isActive: minigameRound.isActive,
+        endsAt: minigameRound.endsAt,
+        scores: topPlayer ? [topPlayer] : [],
+        winner: minigameRound.winner || null
+    };
 }
 
 // ---------------------
@@ -42,8 +50,9 @@ app.post("/submit-score", (req, res) => {
     // Create round if not exists
     if (!rounds[minigame]) {
         rounds[minigame] = {
+            roundId: minigame + "_current",
             isActive: true,
-            endsAt: Date.now() + 24 * 60 * 60 * 1000, // 24h round
+            endsAt: Date.now() + 24 * 60 * 60 * 1000,
             scores: {},
             winner: null
         };
@@ -57,36 +66,19 @@ app.post("/submit-score", (req, res) => {
 
     // Check if round ended
     if (Date.now() >= round.endsAt && round.isActive) {
-        // Determine winner
         const winnerEntry = Object.entries(round.scores)
             .sort((a, b) => b[1] - a[1])[0];
-
-        if (winnerEntry) {
-            round.winner = winnerEntry[0];
-        }
-
+        round.winner = winnerEntry ? winnerEntry[0] : null;
         round.isActive = false;
     }
 
-    // Return the updated round (with scores as array)
-    const response = {
-        roundId: minigame + "_current",
-        isActive: round.isActive,
-        endsAt: round.endsAt,
-        scores: Object.entries(round.scores).map(([pid, s]) => ({
-            playerId: pid,
-            score: s
-        })),
-        winner: round.winner || null
-    };
-
-    res.json(response);
+    res.json(formatRoundTopPlayer(round));
 });
 
 // ---------------------
 // Get round data (top scorer only)
 // ---------------------
-app.get("/round_top/:minigame", (req, res) => {
+app.get("/round/:minigame", (req, res) => {
     const minigame = req.params.minigame;
     const round = rounds[minigame];
 
@@ -96,29 +88,32 @@ app.get("/round_top/:minigame", (req, res) => {
 });
 
 // ---------------------
-// Get round data endpoint
+// Set round data manually
 // ---------------------
-app.get("/round_all/:minigame", (req, res) => {
-    const minigame = req.params.minigame;
-    const round = rounds[minigame];
+app.post("/set-round", (req, res) => {
+    const { minigame, isActive, endsAt, scores, winner } = req.body;
 
-    if (!round) {
-        return res.status(404).json({ error: "Round not found" });
+    if (!minigame) return res.status(400).json({ error: "Missing minigame" });
+
+    // Convert scores array to dictionary
+    const scoresDict = {};
+    if (Array.isArray(scores)) {
+        for (const s of scores) {
+            if (s.playerId && typeof s.score === "number") {
+                scoresDict[s.playerId] = s.score;
+            }
+        }
     }
 
-    // Convert scores dictionary to array
-    const response = {
+    rounds[minigame] = {
         roundId: minigame + "_current",
-        isActive: round.isActive,
-        endsAt: round.endsAt,
-        scores: Object.entries(round.scores).map(([pid, s]) => ({
-            playerId: pid,
-            score: s
-        })),
-        winner: round.winner || null
+        isActive: isActive !== undefined ? isActive : true,
+        endsAt: endsAt || (Date.now() + 24 * 60 * 60 * 1000),
+        scores: scoresDict,
+        winner: winner || null
     };
 
-    res.json(response);
+    res.json({ message: `Round for ${minigame} set successfully`, round: formatRoundTopPlayer(rounds[minigame]) });
 });
 
 // ---------------------
@@ -127,5 +122,3 @@ app.get("/round_all/:minigame", (req, res) => {
 app.listen(port, () => {
     console.log(`Game server running at http://localhost:${port}`);
 });
-
-
