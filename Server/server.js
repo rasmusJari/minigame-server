@@ -26,16 +26,16 @@ const pusher = new Pusher({
 
 console.log("Pusher ticker started");
 
-setInterval(async () => {
-    const payload = {
-        message: "debug tick",
-        timestamp: new Date().toISOString()
-    };
-
-    await pusher.trigger("server-status", "tick", payload);
-
-    console.log("Sent debug tick", payload);
-}, 10_000);
+// setInterval(async () => {
+//     const payload = {
+//         message: "debug tick",
+//         timestamp: new Date().toISOString()
+//     };
+//
+//     await pusher.trigger("server-status", "tick", payload);
+//
+//     console.log("Sent debug tick", payload);
+// }, 10_000);
 
 // ---------------------
 // Middleware
