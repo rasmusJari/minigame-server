@@ -1,9 +1,18 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
+require("dotenv").config();
 
 const app = express();
 const port = 3000;
+
+const pusherConfig = {
+    appId: "2112425",
+    key: "522fd10a074d964fa54f",
+    secret: "0f1f6e3a1a097f5b1829",
+    cluster: "eu",
+    useTLS: true
+};
 
 // ---------------------
 // Middleware
@@ -17,8 +26,11 @@ app.use(bodyParser.json());
 const rounds = {}; // { minigame: { isActive, endsAt, scores, winner } }
 
 // ---------------------
-// Helper to format round
+// Functions
 // ---------------------
+
+
+/// Helper to format round
 function formatRoundTopPlayer(minigameRound) {
     // Determine top scorer
     let topPlayer = null;
@@ -35,6 +47,27 @@ function formatRoundTopPlayer(minigameRound) {
         scores: topPlayer ? [topPlayer] : [],
         winner: minigameRound.winner || null
     };
+}
+
+/// Game round ends
+function endRound(round) {
+    const entries = Object.entries(round.scores);
+    if (entries.length === 0) return null;
+
+    const [winnerId, winnerScore] = entries.sort((a, b) => b[1] - a[1])[0];
+
+    const payload = {
+        roundId: round.roundId,
+        winnerId,
+        winnerScore,
+        scores: round.scores,
+        endedAt: Date.now()
+    };
+
+    // 🔥 PUSH EVENT
+    pusher.trigger("game-round", "round-ended", payload);
+
+    return payload;
 }
 
 // ---------------------
@@ -84,8 +117,17 @@ app.get("/round/:minigame", (req, res) => {
 
     if (!round) return res.status(404).json({ error: "Round not found" });
 
+    if(round.scores > 1){
+        // end game round and 
+        endRound(round);
+    }
+    
     res.json(formatRoundTopPlayer(round));
 });
+
+app.get("/wake-up/", (req, res) => {
+    res.json({ message: "Server is awake!" });
+})
 
 // ---------------------
 // Set round data manually
@@ -121,4 +163,16 @@ app.post("/set-round", (req, res) => {
 // ---------------------
 app.listen(port, () => {
     console.log(`Game server running at http://localhost:${port}`);
+
+    const Pusher = require("pusher");
+
+    const pusher = new Pusher({
+        appId: pusherConfig.appId,
+        key: pusherConfig.key,
+        secret: pusherConfig.secret,
+        cluster: pusherConfig.cluster,
+        useTLS: pusherConfig.useTLS
+    });
+
+    console.log("Pusher server started");
 });
