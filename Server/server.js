@@ -14,6 +14,18 @@ const pusherConfig = {
     useTLS: true
 };
 
+const Pusher = require("pusher");
+
+const pusher = new Pusher({
+    appId: pusherConfig.appId,
+    key: pusherConfig.key,
+    secret: pusherConfig.secret,
+    cluster: pusherConfig.cluster,
+    useTLS: pusherConfig.useTLS
+});
+
+
+
 // ---------------------
 // Middleware
 // ---------------------
@@ -115,7 +127,7 @@ app.get("/round/:minigame", (req, res) => {
     const minigame = req.params.minigame;
     const round = rounds[minigame];
 
-    if (!round) return res.status(404).json({ error: "Round not found" });
+    if (!round) return res.status(200).json({ error: "Round not found" });
 
     if(round.scores > 1){
         // end game round and 
@@ -126,6 +138,12 @@ app.get("/round/:minigame", (req, res) => {
 });
 
 app.get("/wake-up/", (req, res) => {
+    try {
+        pusher.trigger("server-status", "wake-up", {message: "Server is awake!"});
+        console.log("Wake-up event sent successfully");
+    } catch (e) {
+        console.error("Error sending wake-up event:", e);
+    }
     res.json({ message: "Server is awake!" });
 })
 
@@ -163,16 +181,7 @@ app.post("/set-round", (req, res) => {
 // ---------------------
 app.listen(port, () => {
     console.log(`Game server running at http://localhost:${port}`);
-
-    const Pusher = require("pusher");
-
-    const pusher = new Pusher({
-        appId: pusherConfig.appId,
-        key: pusherConfig.key,
-        secret: pusherConfig.secret,
-        cluster: pusherConfig.cluster,
-        useTLS: pusherConfig.useTLS
-    });
+    
 
     console.log("Pusher server started");
 });
