@@ -139,7 +139,7 @@ app.get("/round/:minigame", (req, res) => {
 
 app.get("/wake-up/", (req, res) => {
     try {
-        pusher.trigger("server-status", "wake-up", {message: "Server is awake!"});
+        pusher.trigger("server-status", "wake-up", {message: "PusherMessage: Server is awake!"});
         console.log("Wake-up event sent successfully");
     } catch (e) {
         console.error("Error sending wake-up event:", e);
