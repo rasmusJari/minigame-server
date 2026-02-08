@@ -162,7 +162,7 @@ app.get("/round/:minigame", (req, res) => {
     const minigame = req.params.minigame;
     const round = rounds[minigame];
 
-    if (!round) return res.status(200).json({ error: "Round not found" });
+    if (!round) return res.status(404).json({ error: "Round not found" });
 
     if(round.scores.length > 1){
         // end game round and 
