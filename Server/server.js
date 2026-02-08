@@ -163,14 +163,14 @@ app.get("/round/:minigame", (req, res) => {
     const round = rounds[minigame];
 
     if (!round) return res.status(404).json({ error: "Round not found" });
+    
+    res.json(formatRoundTopPlayer(round));
 
     if(round.scores.length > 1){
         // end game round and 
         console.log("game round ended for minigame", minigame);
         endRound(round);
     }
-    
-    res.json(formatRoundTopPlayer(round));
 });
 
 app.get("/wake-up/", (req, res) => {
