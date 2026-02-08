@@ -55,12 +55,34 @@ const rounds = {}; // { minigame: { isActive, endsAt, scores, winner } }
 
 /// Helper to format round
 function formatRoundTopPlayer(minigameRound) {
-    // Determine top scorer
     let topPlayer = null;
-    if (minigameRound.scores && Object.keys(minigameRound.scores).length > 0) {
-        const sorted = Object.entries(minigameRound.scores).sort((a, b) => b[1] - a[1]);
-        const [playerId, score] = sorted[0];
-        topPlayer = { playerId, score };
+
+    console.log("Score submitted:")
+    console.log(minigameRound);
+    
+    if (minigameRound.scores) {
+        for (const [playerId, value] of Object.entries(minigameRound.scores)) {
+
+            let bestScore = null;
+
+            if (Array.isArray(value)) {
+                if (value.length === 0) continue;
+                bestScore = Math.max(...value);
+            }
+            else if (typeof value === "number") {
+                bestScore = value;
+            }
+            else {
+                continue; // unsupported shape
+            }
+
+            if (!topPlayer || bestScore > topPlayer.score) {
+                topPlayer = {
+                    playerId,
+                    score: bestScore
+                };
+            }
+        }
     }
 
     return {
@@ -68,9 +90,11 @@ function formatRoundTopPlayer(minigameRound) {
         isActive: minigameRound.isActive,
         endsAt: minigameRound.endsAt,
         scores: topPlayer ? [topPlayer] : [],
-        winner: minigameRound.winner || null
+        winner: topPlayer?.playerId ?? minigameRound.winner ?? null
     };
 }
+
+
 
 /// Game round ends
 function endRound(round) {
@@ -140,8 +164,9 @@ app.get("/round/:minigame", (req, res) => {
 
     if (!round) return res.status(200).json({ error: "Round not found" });
 
-    if(round.scores > 1){
+    if(round.scores.length > 1){
         // end game round and 
+        console.log("game round ended for minigame", minigame);
         endRound(round);
     }
     
