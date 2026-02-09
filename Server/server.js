@@ -56,9 +56,6 @@ const rounds = {}; // { minigame: { isActive, endsAt, scores, winner } }
 /// Helper to format round
 function formatRoundTopPlayer(minigameRound) {
     let topPlayer = null;
-
-    console.log("Score submitted:")
-    console.log(minigameRound);
     
     if (minigameRound.scores) {
         for (const [playerId, value] of Object.entries(minigameRound.scores)) {
@@ -127,6 +124,8 @@ app.post("/submit-score", (req, res) => {
         return res.status(400).json({ error: "Missing or invalid playerId/minigame/score" });
     }
 
+    console.log("Received score submission", { playerId, minigame, score });
+    
     // Create round if not exists
     if (!rounds[minigame]) {
         rounds[minigame] = {
@@ -152,6 +151,15 @@ app.post("/submit-score", (req, res) => {
         round.isActive = false;
     }
 
+    const submittedEntries = Object.keys(round.scores).length
+    console.log("submitted scores:", submittedEntries);
+    
+    if(submittedEntries > 0){
+        // end game round and 
+        console.log("game round ended for minigame", minigame);
+        endRound(round);
+    }
+
     res.json(formatRoundTopPlayer(round));
 });
 
@@ -164,13 +172,9 @@ app.get("/round/:minigame", (req, res) => {
 
     if (!round) return res.status(404).json({ error: "Round not found" });
     
-    res.json(formatRoundTopPlayer(round));
+    const data = formatRoundTopPlayer(round);
 
-    if(round.scores.length > 1){
-        // end game round and 
-        console.log("game round ended for minigame", minigame);
-        endRound(round);
-    }
+    res.json(data);
 });
 
 app.get("/wake-up/", (req, res) => {
