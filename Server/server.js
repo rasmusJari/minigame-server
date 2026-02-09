@@ -108,8 +108,8 @@ function endRound(round) {
         endedAt: Date.now()
     };
 
-    // 🔥 PUSH EVENT
-    pusher.trigger("game-round", "round-ended", payload);
+    // // 🔥 PUSH EVENT
+    // pusher.trigger("game-round", "round-ended", payload);
 
     return payload;
 }
@@ -154,9 +154,11 @@ app.post("/submit-score", (req, res) => {
     const submittedEntries = Object.keys(round.scores).length
     console.log("submitted scores:", submittedEntries);
     
-    if(submittedEntries > 0){
+    if(submittedEntries > 1){
         // end game round and 
         console.log("game round ended for minigame", minigame);
+        // 🔥 PUSH EVENT
+        pusher.trigger("game-round", "round-ended", {message: "game round ended"});
         endRound(round);
     }
 
