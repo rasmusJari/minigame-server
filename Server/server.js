@@ -157,9 +157,27 @@ app.post("/submit-score", (req, res) => {
     if(submittedEntries > 1){
         // end game round and 
         console.log("game round ended for minigame", minigame);
+        
+        // evaluate winner and prepare payload
+        const winnerEntry = Object.entries(round.scores)
+            .sort((a, b) => b[1] - a[1])[0];
+        round.winner = winnerEntry ? winnerEntry[0] : null;
+
         // 🔥 PUSH EVENT
-        pusher.trigger("game-round", "round-ended", {message: "game round ended"});
+        const data = {
+            roundId: round.roundId,
+            endedAt: Date.now(),
+            winner: winnerEntry ? winnerEntry[0] : null,
+
+            scores: Object.entries(round.scores).map(([playerId, score]) => ({
+                playerId,
+                score
+            }))
+        };
+
+        pusher.trigger("game-round", "round-ended", data);
         endRound(round);
+        
     }
 
     res.json(formatRoundTopPlayer(round));
