@@ -118,6 +118,8 @@ function endRound(round) {
 // Submit score endpoint
 // ---------------------
 app.post("/submit-score", (req, res) => {
+    
+    console.log("submit-score called with body");
     const { playerId, minigame, score } = req.body;
 
     if (!playerId || !minigame || typeof score !== "number") {
@@ -154,7 +156,7 @@ app.post("/submit-score", (req, res) => {
     const submittedEntries = Object.keys(round.scores).length
     console.log("submitted scores:", submittedEntries);
     
-    if(submittedEntries > 1){
+    if(submittedEntries > 3){
         // end game round and 
         console.log("game round ended for minigame", minigame);
         
@@ -181,6 +183,29 @@ app.post("/submit-score", (req, res) => {
     }
 
     res.json(formatRoundTopPlayer(round));
+    
+    console.log("sending game round updated event for minigame", minigame);
+
+     // 🔥 PUSH EVENT
+    const topEntry = Object.entries(round.scores)
+        .sort((a, b) => b[1] - a[1])[0];
+    const topPlayer = topEntry ? topEntry[0] : null;
+    const topScore = topEntry ? topEntry[1] : null;
+     const data = {
+         game: minigame,
+        roundId: round.roundId,
+        endedAt: Date.now(),
+        topPlayer: topPlayer,
+         topScore: topScore,
+        scores: Object.entries(round.scores).map(([playerId, score]) => ({
+            playerId,
+            score
+        }))
+    };
+    pusher.trigger("game-round", "round-updated", data);
+    console.log("round-updated event sent", data);
+
+    
 });
 
 // ---------------------
