@@ -94,7 +94,7 @@ function formatRoundTopPlayer(minigameRound) {
 
 
 /// Game round ends
-function endRound(round) {
+function endRound(round, minigame) {
     const entries = Object.entries(round.scores);
     if (entries.length === 0) return null;
 
@@ -111,8 +111,32 @@ function endRound(round) {
     // // 🔥 PUSH EVENT
     // pusher.trigger("game-round", "round-ended", payload);
 
+    // Clear round
+    delete entries[minigame];
+
+    // Start new round
+    startNewRound(minigame);
+    
     return payload;
 }
+
+function startNewRound(minigame) {
+    rounds[minigame] = {
+        roundId: minigame + "_" + Date.now(),
+        isActive: true,
+        endsAt: Date.now() + 3600000, // 60 minutes
+        scores: {},
+        winner: null
+    };
+
+    console.log("New round started:", rounds[minigame].roundId);
+
+    pusher.trigger("game-round", "round-started", {
+        roundId: rounds[minigame].roundId,
+        endsAt: rounds[minigame].endsAt
+    });
+}
+
 
 // ---------------------
 // Submit score endpoint
@@ -156,7 +180,7 @@ app.post("/submit-score", (req, res) => {
     const submittedEntries = Object.keys(round.scores).length
     console.log("submitted scores:", submittedEntries);
     
-    if(submittedEntries > 3){
+    if(submittedEntries > 2){
         // end game round and 
         console.log("game round ended for minigame", minigame);
         
@@ -178,8 +202,8 @@ app.post("/submit-score", (req, res) => {
         };
 
         pusher.trigger("game-round", "round-ended", data);
-        endRound(round);
-        
+        endRound(round, minigame);
+        return;
     }
 
     res.json(formatRoundTopPlayer(round));
