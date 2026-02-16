@@ -1,10 +1,18 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
-require("dotenv").config();
+require('dotenv').config({ path: '.env' });
+console.log("ENV TEST:");
+console.log(process.env.UNITY_PROJECT_ID);
+console.log(process.env.UNITY_CLIENT_ID);
+console.log(process.env.UNITY_CLIENT_SECRET);
+console.log("Loaded ENV:", process.env);
+
 
 const app = express();
 const port = 3000;
+const debugPlayerId = 'sk6oUJZbuy73Hb9K1ci7XtOM8KIm';
+const debugPLayerToken = 'eyJhbGciOiJSUzI1NiIsImtpZCI6InB1YmxpYzo2NzQ2QjA5NC0zODNCLTRFMDYtQjA0OS04OUU4MTU1NjdBOUQiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOlsiaWRkOmZjMzM3MjFiLWZkZDItNGNmZS1hMDk0LTQxOTBmYTYxY2Y4YyIsImVudk5hbWU6ZGV2ZWxvcG1lbnQiLCJlbnZJZDphYjJhYmJkZS1kZmUxLTQ5YzEtODM5Ni00NTU2ZDVhOTY2YWMiLCJ1cGlkOjhkYjY5OTUyLTNkNDQtNGI4MC1iOGM4LWJmMzk2ZmFhNDU0MSJdLCJleHAiOjE3NzA5ODUzMjAsImlhdCI6MTc3MDk4MTcyMCwiaWRkIjoiZmMzMzcyMWItZmRkMi00Y2ZlLWEwOTQtNDE5MGZhNjFjZjhjIiwiaXNzIjoiaHR0cHM6Ly9wbGF5ZXItYXV0aC5zZXJ2aWNlcy5hcGkudW5pdHkuY29tIiwianRpIjoiNGQ4OWI1OWEtY2Y4Zi00Yzg5LThkNjQtMjg4ZGFjYzA4ZTRhIiwibmJmIjoxNzcwOTgxNzIwLCJwcm9qZWN0X2lkIjoiOGRiNjk5NTItM2Q0NC00YjgwLWI4YzgtYmYzOTZmYWE0NTQxIiwic2lnbl9pbl9wcm92aWRlciI6ImFub255bW91cyIsInN1YiI6InNrNm9VSlpidXk3M0hiOUsxY2k3WHRPTThLSW0iLCJ0b2tlbl90eXBlIjoiYXV0aGVudGljYXRpb24iLCJ2ZXJzaW9uIjoiMSJ9.VXSP6hFSyAvRwE2og4hgA-Lare5juKMLr_HqP7Mm91lIGaC1ra3Tu8mtpe5PnnE-LsjWaymstou9Pqpn-R8DUXP7QJyY99qfNw19mNar8cKqp0NYYur7gyjmZf4m4TvDeg9tyCFuzusjKRuZmZG_KnYcu-wYIPObiLz00aUwImTtfOeknY1gGPDUAckHNHBUjAO2ky1bQ0rLWSiuv30X39iVlk9SSofoN_bcrXP-DgS7IJmO_psJ2NNvMehJI-AVYDXjUvHgm5BHuCAxhT0g0kOnewZ55XHXdHHcrLDJbR3pE0b8_vFuBPv0hi2L-IXeftENnhEMR_JicsaFlzDqdQ';
 
 const pusherConfig = {
     appId: "2112425",
@@ -144,7 +152,7 @@ function startNewRound(minigame) {
 app.post("/submit-score", (req, res) => {
     
     console.log("submit-score called with body");
-    const { playerId, minigame, score } = req.body;
+    const { playerId, playerToken, minigame, score } = req.body;
 
     if (!playerId || !minigame || typeof score !== "number") {
         return res.status(400).json({ error: "Missing or invalid playerId/minigame/score" });
@@ -223,6 +231,7 @@ app.post("/submit-score", (req, res) => {
          topScore: topScore,
         scores: Object.entries(round.scores).map(([playerId, score]) => ({
             playerId,
+            playerToken,
             score
         }))
     };
