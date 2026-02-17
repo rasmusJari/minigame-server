@@ -39,6 +39,7 @@ const Player = require('./models/Player');
 const app = express();
 app.use(bodyParser.json());
 app.use(cors());
+app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
@@ -62,13 +63,26 @@ startServer();
 
 
 // --- Get player state ---
-app.get('/player/:playerId', async (req, res) => {
-    const { playerId } = req.params;
-    let player = await Player.findOne({ playerId });
-    if (!player) {
-        return res.status(404).json({ error: 'Player not found' });
+app.post('/player/get', async (req, res) => {
+    try {
+        const { playerId } = req.body;
+
+        if (!playerId) {
+            return res.status(400).json({ error: 'playerId required' });
+        }
+
+        const player = await Player.findOne({ playerId });
+
+        if (!player) {
+            return res.status(404).json({ error: 'Player not found' });
+        }
+
+        res.json(player);
+
+    } catch (err) {
+        console.error("Get player error:", err);
+        res.status(500).json({ error: 'Server error' });
     }
-    res.json(player);
 });
 
 // --- Create / ensure player ---
@@ -105,6 +119,77 @@ app.post("/player", async (req, res) => {
         });
     }
 });
+
+app.post('/player/inventory', async (req, res) => {
+    try {
+        const { playerId } = req.body;
+
+        if (!playerId) {
+            return res.status(400).json({ error: 'playerId required' });
+        }
+
+        const player = await Player.findOne({ playerId: playerId });
+
+        if (!player) {
+            return res.status(404).json({ error: 'Player not found' });
+        }
+
+        return res.status(200).json({
+            inventory: player.currencies
+        });
+
+    } catch (err) {
+        console.error('Get player inventory error:', err);
+        return res.status(500).json({ error: 'Server error' });
+    }
+});
+
+app.post('/player/inventory/try-consume', async (req, res) => {
+    const { playerId, currencyId, amount } = req.body;
+
+    if (!playerId || !currencyId || typeof amount !== "number") {
+        return res.status(400).json({ error: "playerId, type and numeric amount required" });
+    }
+
+    const player = await Player.findOne({ playerId });
+    if (!player) return res.status(404).json({ error: 'Player not found' });
+
+    if (player.currencies[currencyId] != null && player.currencies[currencyId] >= amount) {
+        player.currencies[currencyId] -= amount;
+        await player.save();
+        return res.json({ success: true });
+    }
+
+    return res.status(403).json({ error: "Insufficient currency" });
+    
+});
+
+// --- Add currency ---
+app.post("/player/currency/add", async (req, res) => {
+    try {
+        const { playerId, type, amount } = req.body;
+
+        if (!playerId || !type || typeof amount !== "number") {
+            return res.status(400).json({ error: "playerId, type and numeric amount required" });
+        }
+
+        const player = await Player.findOne({ playerId });
+        if (!player) return res.status(404).json({ error: 'Player not found' });
+
+        if (player.currencies[type] != null) {
+            player.currencies[type] += amount;
+        } else {
+            player.currencies[type] = amount;
+        }
+
+        await player.save();
+        res.json(player.currencies);
+
+    } catch (error) {
+        console.error("Add currency error:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+})
 
 
 // --- Add pending reward ---
@@ -241,7 +326,7 @@ function startNewRound(minigame) {
 app.post("/submit-score", (req, res) => {
     
     console.log("submit-score called with body");
-    const { playerId, playerToken, minigame, score } = req.body;
+    const { playerId, minigame, score } = req.body;
 
     if (!playerId || !minigame || typeof score !== "number") {
         return res.status(400).json({ error: "Missing or invalid playerId/minigame/score" });
@@ -320,7 +405,6 @@ app.post("/submit-score", (req, res) => {
          topScore: topScore,
         scores: Object.entries(round.scores).map(([playerId, score]) => ({
             playerId,
-            playerToken,
             score
         }))
     };

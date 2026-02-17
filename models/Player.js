@@ -12,7 +12,7 @@ const playerSchema = new mongoose.Schema({
     currencies: {
         GOLD: { type: Number, default: 123 },
         GEMS: { type: Number, default: 3 },
-        TICKETS: { type: Number, default: 5 },
+        GAME_TICKET: { type: Number, default: 5 },
     },
     pendingRewards: [rewardSchema],
     lastLogin: { type: Date, default: Date.now }
