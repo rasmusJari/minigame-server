@@ -35,6 +35,7 @@ const rounds = {}; // { minigame: { isActive, endsAt, scores, winner } }
 require('dotenv').config();
 const mongoose = require('mongoose');
 const Player = require('./models/Player');
+const Purchase = require('./models/Purchase');
 
 const app = express();
 app.use(bodyParser.json());
@@ -221,6 +222,57 @@ app.post('/player/:playerId/claim', async (req, res) => {
     player.pendingRewards = []; // Clear after claiming
     await player.save();
     res.json(player.currencies);
+});
+
+//--- ECONOMY CALLS ---
+app.get('/economy/purchases', async (req, res) => {
+    const purchases = await Purchase.find({});
+    res.json({purchases});
+});
+
+app.post('/economy/try-purchase', async (req, res) => {
+    const{playerId, purchaseId} = req.body;
+
+    if(!playerId || !purchaseId){
+        return res.status(400).json({error: "playerId and purchaseId required"});
+    }
+    
+    // find purchase config in db 'purchases'
+    const purchase = await Purchase.findOne({ purchaseId });
+    if (!purchase) {
+        return res.status(404).json({ error: "Purchase not found" });
+    }
+
+    // Check if player has enough currency
+    const player = await Player.findOne({ playerId });
+    if (!player) {
+        return res.status(404).json({ error: "Player not found" });
+    }
+
+    const hasEnoughCurrency = purchase.cost.every(item => {
+        return player.currencies[item.type] != null && player.currencies[item.type] >= item.amount;
+    });
+
+    if (!hasEnoughCurrency) {
+        return res.status(403).json({ error: "Insufficient currency" });
+    }
+
+    // Deduct cost from player
+    purchase.cost.forEach(item => {
+        player.currencies[item.type] -= item.amount;
+    });
+
+    await player.save();
+
+    // Grant rewards
+    purchase.reward.forEach(item => {
+        player.currencies[item.type] = (player.currencies[item.type] || 0) + item.amount;
+    });
+
+    await player.save();
+
+    res.json({ success: true, player });
+    await Purchase.findOne({purchaseId});   
 });
 
 /**********************************************************************/
