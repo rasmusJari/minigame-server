@@ -236,7 +236,6 @@ app.post('/economy/try-purchase', async (req, res) => {
     if(!playerId || !purchaseId){
         return res.status(400).json({error: "playerId and purchaseId required"});
     }
-    
     // find purchase config in db 'purchases'
     const purchase = await Purchase.findOne({ purchaseId });
     if (!purchase) {
@@ -248,24 +247,24 @@ app.post('/economy/try-purchase', async (req, res) => {
     if (!player) {
         return res.status(404).json({ error: "Player not found" });
     }
-
-    const hasEnoughCurrency = purchase.cost.every(item => {
+    
+    const hasEnoughCurrency = purchase.costs.every(item => {
         return player.currencies[item.type] != null && player.currencies[item.type] >= item.amount;
     });
-
+    
     if (!hasEnoughCurrency) {
         return res.status(403).json({ error: "Insufficient currency" });
     }
 
     // Deduct cost from player
-    purchase.cost.forEach(item => {
+    purchase.costs.forEach(item => {
         player.currencies[item.type] -= item.amount;
     });
 
     await player.save();
 
     // Grant rewards
-    purchase.reward.forEach(item => {
+    purchase.rewards.forEach(item => {
         player.currencies[item.type] = (player.currencies[item.type] || 0) + item.amount;
     });
 
