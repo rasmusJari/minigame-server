@@ -36,6 +36,7 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const Player = require('./models/Player');
 const Purchase = require('./models/Purchase');
+const Reward = require('./models/Reward');
 
 const app = express();
 app.use(bodyParser.json());
@@ -274,6 +275,24 @@ app.post('/economy/try-purchase', async (req, res) => {
     await Purchase.findOne({purchaseId});   
 });
 
+app.post('/economy/get-pending-rewards', async (req, res) => {
+    const { playerId } = req.body;
+    if (!playerId) {
+        return res.status(400).json({ error: "playerId required" });
+    }
+
+    // find rewards for player id
+    const rewards = await Reward.find({ playerId });
+
+    if(rewards.length === 0){
+        return res.status(404).json({ error: "No rewards found for player" });
+    }
+    
+    // remove rewards after fetching
+    await Reward.deleteMany({ playerId });
+    
+    res.json({ rewards });
+});
 /**********************************************************************/
 //****************** END DATABASE SETUP *******************************
 /**********************************************************************/
@@ -341,6 +360,33 @@ function endRound(round, minigame) {
         endedAt: Date.now()
     };
 
+    // book reward in db
+    const reward = new Reward({
+        playerId: winnerId,
+        type: "GOLD",
+        amount: 1000, // example reward
+        game: minigame
+    });
+    reward.save().then(() => {
+        console.log("Reward saved for player", winnerId);
+    }).catch(err => {
+        console.error("Error saving reward:", err);
+    });
+    
+    // book reward directly in winner inventory
+    Player.findOne({ playerId: winnerId }).then(player => {
+        if (!player) {
+            console.error("Winner player not found for reward:", winnerId);
+            return;
+        }
+        player.currencies[reward.type] = (player.currencies[reward.type] || 0) + reward.amount;
+        return player.save();
+    }).then(() => {
+        console.log("Winner inventory updated for player", winnerId);
+    }).catch(err => {
+        console.error("Error updating winner inventory:", err);
+    });
+    
     // // 🔥 PUSH EVENT
     // pusher.trigger("game-round", "round-ended", payload);
 
@@ -413,7 +459,7 @@ app.post("/submit-score", (req, res) => {
     const submittedEntries = Object.keys(round.scores).length
     console.log("submitted scores:", submittedEntries);
     
-    if(submittedEntries > 2){
+    if(submittedEntries > 0){
         // end game round and 
         console.log("game round ended for minigame", minigame);
         
