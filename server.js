@@ -459,7 +459,7 @@ app.post("/submit-score", (req, res) => {
     const submittedEntries = Object.keys(round.scores).length
     console.log("submitted scores:", submittedEntries);
     
-    if(submittedEntries > 0){
+    if(submittedEntries >= 2){
         // end game round and 
         console.log("game round ended for minigame", minigame);
         
