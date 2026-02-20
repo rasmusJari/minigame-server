@@ -17,7 +17,7 @@ app.use(express.json());
 app.use("/player", playerRoutes);
 app.use("/economy", economyRoutes);
 app.use("/", roundRoutes);
-app.use("/", pusherRoutes);
+app.use("/pusher", pusherRoutes);
 
 async function startServer() {
     try {

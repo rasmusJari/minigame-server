@@ -6,11 +6,13 @@ const pusher = require("../config/pusher");
 // ---------------------
 
 async function sendInventoryUpdate(player) {
+    console.log("send private pusher event to player: ", player.playerId);
     await pusher.trigger(
         `private-player.${player.playerId}`,
         "inventory-updated",
         { inventory: player.currencies }
     );
+    console.log("Done sending private pusher event");
 }
 
 // ---------------------
