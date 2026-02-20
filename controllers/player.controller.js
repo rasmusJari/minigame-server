@@ -81,31 +81,28 @@ exports.getInventory = async (req, res) => {
 
 exports.tryConsumeCurrency = async (req, res) => {
     try {
-        const { playerId, currencyId, amount } = req.body;
+        const { socket_id, channel_name } = req.body;
 
-        if (!playerId || !currencyId || typeof amount !== "number")
-            return res.status(400).json({ error: "Invalid parameters" });
+        if (!socket_id || !channel_name)
+            return res.status(400).send("Invalid request");
+
+        if (!channel_name.startsWith("private-player."))
+            return res.status(403).send("Invalid channel");
+
+        // Extract playerId from channel name
+        const playerId = channel_name.replace("private-player.", "");
 
         const player = await Player.findOne({ playerId });
         if (!player)
-            return res.status(404).json({ error: "Player not found" });
+            return res.status(403).send("Invalid player");
 
-        if (
-            player.currencies[currencyId] != null &&
-            player.currencies[currencyId] >= amount
-        ) {
-            player.currencies[currencyId] -= amount;
-            await player.save();
-            await sendInventoryUpdate(player);
+        const auth = pusher.authorizeChannel(socket_id, channel_name);
 
-            return res.json({ success: true });
-        }
+        res.send(auth);
 
-        return res.status(403).json({ error: "Insufficient currency" });
-    }
-    catch (err) {
-        console.error("Consume currency error:", err);
-        res.status(500).json({ error: "Server error" });
+    } catch (err) {
+        console.error("Auth error:", err);
+        res.status(500).send("Auth failed");
     }
 };
 
