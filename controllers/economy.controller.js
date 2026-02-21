@@ -63,7 +63,11 @@ exports.removeCurrency = async (req, res) => {
         
         player.currencies[currencyId] -= amount;
         await player.save();
-        return res.status(200).json({inventory: player.currencies});
+        return res.status(200).json(
+            {
+                success: true,
+                inventory: player.currencies
+            });
         
     } catch (err) {
         console.error(err);
