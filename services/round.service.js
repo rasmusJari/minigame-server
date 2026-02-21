@@ -113,6 +113,8 @@ async function endRound(round, minigame) {
 // ---------------------
 
 exports.submitScore = async (req, res) => {
+    console.log("score submit called");
+    
     const { playerId, minigame, score } = req.body;
 
     if (!playerId || !minigame || typeof score !== "number") {
@@ -123,14 +125,23 @@ exports.submitScore = async (req, res) => {
 
     // Create round if none exists
     if (!rounds[minigame]) {
+        console.log("new game round started")
         startNewRound(minigame);
     }
+    console.log("rounds[minigame]", rounds[minigame]);
 
     const round = rounds[minigame];
 
     // Update best score
     const previous = round.scores[playerId] || 0;
     round.scores[playerId] = Math.max(previous, score);
+    
+    console.log("sending pusher event for score submission", { playerId, minigame, score });
+    // private pusher event for this player in order to close the webview
+    await pusher.trigger(`private-player.${playerId}`, "score-submitted", {
+        minigame,
+        score
+    });
 
     // For testing: end round after first submission
     if (Object.keys(round.scores).length >= 1) {
