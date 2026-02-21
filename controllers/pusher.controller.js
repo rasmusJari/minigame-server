@@ -13,22 +13,20 @@ exports.authenticate = async (req, res) => {
             cluster: process.env.PUSHER_CLUSTER
         });
 
-        const { socket_id, channel_name, playerId } = req.body;
+        const { socket_id, channel_name } = req.body;
 
-        if (!socket_id || !channel_name || !playerId) {
+        if (!socket_id || !channel_name) {
             console.log("Missing required fields");
             return res.status(400).send("Invalid request");
         }
 
-        const expected = `private-player.${playerId}`;
-        if (channel_name !== expected) {
-            console.log("Channel mismatch:", channel_name, expected);
-            return res.status(403).send("Forbidden");
-        }
+        if (!channel_name.startsWith("private-player."))
+            return res.status(403).send("Invalid channel");
+
+        // Extract playerId from channel name
+        const playerId = channel_name.replace("private-player.", "");
 
         const player = await Player.findOne({ playerId });
-        console.log("Player found:", player ? true : false);
-
         if (!player)
             return res.status(403).send("Invalid player");
 
