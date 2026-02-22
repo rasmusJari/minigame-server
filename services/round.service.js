@@ -55,7 +55,7 @@ function startNewRound(minigame) {
         winner: null
     };
 
-    pusher.trigger("game-round", "round-started", {
+    pusher.trigger("public-channel", "round-started", {
         roundId: rounds[minigame].roundId,
         endsAt: rounds[minigame].endsAt
     });
@@ -99,7 +99,7 @@ async function endRound(round, minigame) {
         endedAt: Date.now()
     };
 
-    pusher.trigger("game-round", "round-ended", payload);
+    pusher.trigger("public-channel", "round-ended", payload);
 
     // Start fresh round
     startNewRound(minigame);
@@ -155,7 +155,7 @@ exports.submitScore = async (req, res) => {
     const topEntry = Object.entries(round.scores)
         .sort((a, b) => b[1] - a[1])[0];
 
-    pusher.trigger("game-round", "round-updated", {
+    pusher.trigger("public-channel", "round-updated", {
         game: minigame,
         roundId: round.roundId,
         topPlayer: topEntry?.[0] ?? null,
@@ -207,7 +207,7 @@ exports.setRound = (req, res) => {
 };
 
 exports.wakeUp = (req, res) => {
-    pusher.trigger("server-status", "wake-up", {
+    pusher.trigger("public-channel", "wake-up", {
         message: "Server is awake!"
     });
 
