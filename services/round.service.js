@@ -1,6 +1,7 @@
 const Player = require("../models/Player");
 const Reward = require("../models/Reward");
 const pusher = require("../config/pusher");
+const Game = require("../models/Game");
 
 // ---------------------
 // In-memory rounds store
@@ -144,7 +145,21 @@ exports.submitScore = async (req, res) => {
     });
 
     // For testing: end round after first submission
-    if (Object.keys(round.scores).length >= 1) {
+    
+    // find game settings in db 'games' and check if round should end after first submission
+    console.log("looking for game settings for", minigame);
+    const gameSettings = await Game.findOne({ identifier: minigame }).lean();
+
+    if (!gameSettings) {
+        console.log("game settings not found for", minigame);
+        return res.status(400).json({ error: "Missing or invalid game configuration" });
+    }
+
+    maxSubmissions = gameSettings.maxPlayers ?? 1;
+    
+    console.log("game should end after max submissions:", maxSubmissions);
+    
+    if (Object.keys(round.scores).length >= 2) {
         await endRound(round, minigame);
         return res.json({ message: "Round ended" });
     }
