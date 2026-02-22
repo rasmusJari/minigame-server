@@ -7,6 +7,7 @@ const playerRoutes = require("./routes/player.routes");
 const economyRoutes = require("./routes/economy.routes");
 const roundRoutes = require("./routes/round.routes");
 const pusherRoutes = require("./routes/pusher.routes");
+const gameRoutes = require("./routes/game.routes");
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use("/player", playerRoutes);
 app.use("/economy", economyRoutes);
 app.use("/", roundRoutes);
 app.use("/pusher", pusherRoutes);
+app.use("/game", gameRoutes);
 
 async function startServer() {
     try {
