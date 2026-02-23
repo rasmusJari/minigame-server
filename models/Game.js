@@ -6,6 +6,7 @@ const gameSchema = new mongoose.Schema({
     description: { type: String, required: true },
     gameUrl: { type: String, required: true },
     maxPlayers: { type: Number, required: true },
+    costPerPlay: { type: Number, required: true },
 });
 
 module.exports = mongoose.model("Game", gameSchema);
