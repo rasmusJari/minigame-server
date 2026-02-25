@@ -48,19 +48,25 @@ async function sendInventoryUpdate(player) {
 // Round Lifecycle
 // ---------------------
 
-async function getOrCreateActiveRound(minigame) {
-    let round = await GameRound.findOne({ minigame, isActive: true });
+async function getOrCreateGameRound(minigame, playerId) {
+
+    // Find active round where player has NOT submitted
+    let round = await GameRound.findOne({
+        minigame,
+        isActive: true,
+        [`scores.${playerId}`]: { $exists: false }
+    });
 
     if (round) return round;
 
-    // Find latest round number
+    // No eligible round → create new one
     const lastRound = await GameRound
         .findOne({ minigame })
         .sort({ roundId: -1 });
 
-    const nextRoundNumber = lastRound ? lastRound.roundNumber + 1 : 1;
+    const nextRoundNumber = lastRound ? lastRound.roundId + 1 : 1;
 
-    round = new GameRound({
+    round = await GameRound.create({
         roundId: nextRoundNumber,
         minigame,
         isActive: true,
@@ -68,8 +74,6 @@ async function getOrCreateActiveRound(minigame) {
         scores: {},
         numberOfPlayers: 0
     });
-
-    await round.save();
 
     await pusher.trigger("public-channel", "round-started", {
         roundId: round.roundId,
@@ -132,6 +136,7 @@ async function endRound(round) {
 
 // 1️⃣ Player submits score
 exports.submitScore = async (req, res) => {
+
     const { playerId, minigame, score } = req.body;
 
     if (!playerId || !minigame || typeof score !== "number") {
@@ -140,56 +145,33 @@ exports.submitScore = async (req, res) => {
         });
     }
 
-    // 1️⃣ Get or create active round
-    let round = await GameRound.findOne({ minigame, isActive: true });
+    // 1️⃣ Get eligible round (or create one)
+    const round = await getOrCreateGameRound(minigame, playerId);
 
     if (!round) {
-        const lastRound = await GameRound
-            .findOne({ minigame })
-            .sort({ roundId: -1 });
-
-        const nextRoundNumber = lastRound ? lastRound.roundNumber + 1 : 1;
-
-        round = await GameRound.create({
-            roundId: nextRoundNumber,
-            minigame: minigame,
-            isActive: true,
-            endsAt: new Date(Date.now() + 60 * 60 * 1000),
-            scores: {},
-            numberOfPlayers: 0
-        });
-        
-        round.scores.add(playerId, score);
-        await round.save();
-
-        await pusher.trigger("public-channel", "round-started", {
-            roundId: round.roundId,
-            endsAt: round.endsAt
+        return res.status(500).json({
+            error: "Failed to get or create round"
         });
     }
 
-    // 2️⃣ Atomic score update
-    const updateResult = await GameRound.updateOne(
+    // 2️⃣ Double safety check (should never trigger)
+    if (round.scores.has(playerId)) {
+        return res.status(400).json({
+            error: "Player already submitted to this round"
+        });
+    }
+
+    // 3️⃣ Atomic update:
+    //    - set score
+    //    - increment numberOfPlayers
+    await GameRound.updateOne(
         { _id: round._id },
         {
-            $max: { [`scores.${playerId}`]: score }
+            $set: { [`scores.${playerId}`]: score },
+            $inc: { numberOfPlayers: 1 }
         }
     );
 
-    // 3️⃣ If this player didn't exist before, increment player count
-    const updatedRound = await GameRound.findById(round._id);
-
-    const playerAlreadyExists =
-        updatedRound.scores.has(playerId);
-
-    if (!playerAlreadyExists) {
-        await GameRound.updateOne(
-            { _id: round._id },
-            { $inc: { numberOfPlayers: 1 } }
-        );
-    }
-
-    // Re-fetch fresh state
     const freshRound = await GameRound.findById(round._id);
 
     await pusher.trigger(
@@ -198,6 +180,7 @@ exports.submitScore = async (req, res) => {
         { minigame, score }
     );
 
+    // 4️⃣ Check game settings
     const gameSettings = await Game
         .findOne({ identifier: minigame })
         .lean();
@@ -210,13 +193,13 @@ exports.submitScore = async (req, res) => {
 
     const maxPlayers = gameSettings.maxPlayers ?? 1;
 
-    // 4️⃣ End round if limit reached
+    // 5️⃣ End round if full
     if (freshRound.numberOfPlayers >= maxPlayers) {
         await endRound(freshRound);
         return res.json({ message: "Round ended" });
     }
 
-    // 5️⃣ Compute leaderboard safely
+    // 6️⃣ Compute leaderboard
     const scoresObj = Object.fromEntries(freshRound.scores);
 
     const topEntry = Object.entries(scoresObj)
