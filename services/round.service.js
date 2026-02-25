@@ -2,6 +2,7 @@ const Player = require("../models/Player");
 const Reward = require("../models/Reward");
 const pusher = require("../config/pusher");
 const Game = require("../models/Game");
+const GameRound = require("../models/GameRound");
 
 // ---------------------
 // In-memory rounds store
@@ -47,23 +48,41 @@ async function sendInventoryUpdate(player) {
 // Round Lifecycle
 // ---------------------
 
-function startNewRound(minigame) {
-    rounds[minigame] = {
-        roundId: `${minigame}_${Date.now()}`,
-        isActive: true,
-        endsAt: Date.now() + 60 * 60 * 1000,
-        scores: {},
-        winner: null
-    };
+async function getOrCreateActiveRound(minigame) {
+    let round = await GameRound.findOne({ minigame, isActive: true });
 
-    pusher.trigger("public-channel", "round-started", {
-        roundId: rounds[minigame].roundId,
-        endsAt: rounds[minigame].endsAt
+    if (round) return round;
+
+    // Find latest round number
+    const lastRound = await GameRound
+        .findOne({ minigame })
+        .sort({ roundId: -1 });
+
+    const nextRoundNumber = lastRound ? lastRound.roundNumber + 1 : 1;
+
+    round = new GameRound({
+        roundId: nextRoundNumber,
+        minigame,
+        isActive: true,
+        endsAt: new Date(Date.now() + 60 * 60 * 1000),
+        scores: {},
+        numberOfPlayers: 0
     });
+
+    await round.save();
+
+    await pusher.trigger("public-channel", "round-started", {
+        roundId: round.roundId,
+        endsAt: round.endsAt
+    });
+
+    return round;
 }
 
-async function endRound(round, minigame) {
-    const entries = Object.entries(round.scores);
+async function endRound(round) {
+    const scoresObj = Object.fromEntries(round.scores);
+
+    const entries = Object.entries(scoresObj);
     if (entries.length === 0) return null;
 
     const [winnerId, winnerScore] =
@@ -72,17 +91,18 @@ async function endRound(round, minigame) {
     round.winner = winnerId;
     round.isActive = false;
 
-    // Save reward in DB
+    await round.save();
+
+    // Reward logic (unchanged)
     const reward = new Reward({
         playerId: winnerId,
         type: "GOLD",
         amount: 1000,
-        game: minigame
+        game: round.minigame
     });
 
     await reward.save();
 
-    // Update player inventory immediately
     const player = await Player.findOne({ playerId: winnerId });
     if (player) {
         player.currencies["GOLD"] =
@@ -96,14 +116,11 @@ async function endRound(round, minigame) {
         roundId: round.roundId,
         winnerId,
         winnerScore,
-        scores: round.scores,
+        scores: scoresObj,
         endedAt: Date.now()
     };
 
-    pusher.trigger("public-channel", "round-ended", payload);
-
-    // Start fresh round
-    startNewRound(minigame);
+    await pusher.trigger("public-channel", "round-ended", payload);
 
     return payload;
 }
@@ -113,9 +130,8 @@ async function endRound(round, minigame) {
 // Public API
 // ---------------------
 
+// 1️⃣ Player submits score
 exports.submitScore = async (req, res) => {
-    console.log("score submit called");
-    
     const { playerId, minigame, score } = req.body;
 
     if (!playerId || !minigame || typeof score !== "number") {
@@ -124,102 +140,136 @@ exports.submitScore = async (req, res) => {
         });
     }
 
-    // Create round if none exists
-    if (!rounds[minigame]) {
-        console.log("new game round started")
-        startNewRound(minigame);
+    // 1️⃣ Get or create active round
+    let round = await GameRound.findOne({ minigame, isActive: true });
+
+    if (!round) {
+        const lastRound = await GameRound
+            .findOne({ minigame })
+            .sort({ roundId: -1 });
+
+        const nextRoundNumber = lastRound ? lastRound.roundNumber + 1 : 1;
+
+        round = await GameRound.create({
+            roundId: nextRoundNumber,
+            minigame: minigame,
+            isActive: true,
+            endsAt: new Date(Date.now() + 60 * 60 * 1000),
+            scores: {},
+            numberOfPlayers: 0
+        });
+        
+        round.scores.add(playerId, score);
+        await round.save();
+
+        await pusher.trigger("public-channel", "round-started", {
+            roundId: round.roundId,
+            endsAt: round.endsAt
+        });
     }
-    console.log("rounds[minigame]", rounds[minigame]);
 
-    const round = rounds[minigame];
+    // 2️⃣ Atomic score update
+    const updateResult = await GameRound.updateOne(
+        { _id: round._id },
+        {
+            $max: { [`scores.${playerId}`]: score }
+        }
+    );
 
-    // Update best score
-    const previous = round.scores[playerId] || 0;
-    round.scores[playerId] = Math.max(previous, score);
-    
-    console.log("sending pusher event for score submission", { playerId, minigame, score });
-    // private pusher event for this player in order to close the webview
-    await pusher.trigger(`private-player.${playerId}`, "score-submitted", {
-        minigame,
-        score
-    });
+    // 3️⃣ If this player didn't exist before, increment player count
+    const updatedRound = await GameRound.findById(round._id);
 
-    // For testing: end round after first submission
-    
-    // find game settings in db 'games' and check if round should end after first submission
-    console.log("looking for game settings for", minigame);
-    const gameSettings = await Game.findOne({ identifier: minigame }).lean();
+    const playerAlreadyExists =
+        updatedRound.scores.has(playerId);
+
+    if (!playerAlreadyExists) {
+        await GameRound.updateOne(
+            { _id: round._id },
+            { $inc: { numberOfPlayers: 1 } }
+        );
+    }
+
+    // Re-fetch fresh state
+    const freshRound = await GameRound.findById(round._id);
+
+    await pusher.trigger(
+        `private-player.${playerId}`,
+        "score-submitted",
+        { minigame, score }
+    );
+
+    const gameSettings = await Game
+        .findOne({ identifier: minigame })
+        .lean();
 
     if (!gameSettings) {
-        console.log("game settings not found for", minigame);
-        return res.status(400).json({ error: "Missing or invalid game configuration" });
+        return res.status(400).json({
+            error: "Missing or invalid game configuration"
+        });
     }
 
-    maxSubmissions = gameSettings.maxPlayers ?? 1;
-    
-    console.log("game should end after max submissions:", maxSubmissions);
-    
-    if (Object.keys(round.scores).length >= 2) {
-        await endRound(round, minigame);
+    const maxPlayers = gameSettings.maxPlayers ?? 1;
+
+    // 4️⃣ End round if limit reached
+    if (freshRound.numberOfPlayers >= maxPlayers) {
+        await endRound(freshRound);
         return res.json({ message: "Round ended" });
     }
 
-    res.json(formatRoundTopPlayer(round));
+    // 5️⃣ Compute leaderboard safely
+    const scoresObj = Object.fromEntries(freshRound.scores);
 
-    // Push live update
-    const topEntry = Object.entries(round.scores)
+    const topEntry = Object.entries(scoresObj)
         .sort((a, b) => b[1] - a[1])[0];
 
-    pusher.trigger("public-channel", "round-updated", {
+    await pusher.trigger("public-channel", "round-updated", {
         game: minigame,
-        roundId: round.roundId,
+        roundId: freshRound.roundId,
         topPlayer: topEntry?.[0] ?? null,
         topScore: topEntry?.[1] ?? null,
-        scores: Object.entries(round.scores).map(([id, s]) => ({
+        scores: Object.entries(scoresObj).map(([id, s]) => ({
             playerId: id,
             score: s
         }))
     });
+
+    res.json({
+        roundId: freshRound.roundId,
+        isActive: freshRound.isActive,
+        endsAt: freshRound.endsAt,
+        topPlayer: topEntry?.[0] ?? null,
+        topScore: topEntry?.[1] ?? null
+    });
 };
 
-exports.getRound = (req, res) => {
+
+// 2️⃣ Get current round state
+exports.getRound = async (req, res) => {
     const { minigame } = req.params;
-    const round = rounds[minigame];
+
+    const round = await GameRound.findOne({
+        minigame,
+        isActive: true
+    });
 
     if (!round)
         return res.status(404).json({ error: "Round not found" });
 
-    res.json(formatRoundTopPlayer(round));
-};
+    const scoresObj = Object.fromEntries(round.scores);
 
-exports.setRound = (req, res) => {
-    const { minigame, isActive, endsAt, scores, winner } = req.body;
-
-    if (!minigame)
-        return res.status(400).json({ error: "Missing minigame" });
-
-    const scoresDict = {};
-    if (Array.isArray(scores)) {
-        for (const s of scores) {
-            if (s.playerId && typeof s.score === "number") {
-                scoresDict[s.playerId] = s.score;
-            }
-        }
-    }
-
-    rounds[minigame] = {
-        roundId: `${minigame}_${Date.now()}`,
-        isActive: isActive ?? true,
-        endsAt: endsAt ?? Date.now() + 24 * 60 * 60 * 1000,
-        scores: scoresDict,
-        winner: winner ?? null
-    };
+    const topEntry = Object.entries(scoresObj)
+        .sort((a, b) => b[1] - a[1])[0];
 
     res.json({
-        message: `Round for ${minigame} set`,
-        round: formatRoundTopPlayer(rounds[minigame])
+        roundId: round.roundId,
+        isActive: round.isActive,
+        endsAt: round.endsAt,
+        winner: round.winner,
+        topPlayer: topEntry?.[0] ?? null,
+        topScore: topEntry?.[1] ?? null
     });
 };
+
 
 exports.wakeUp = (req, res) => {
     pusher.trigger("public-channel", "wake-up", {
