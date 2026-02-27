@@ -5,6 +5,7 @@ const controller = require("../controllers/economy.controller");
 router.get("/purchases", controller.getPurchases);
 router.post("/try-purchase", controller.tryPurchase);
 router.post("/get-pending-rewards", controller.getPendingRewards);
+router.post("/claim-reward", controller.claimReward);
 router.post("/add", controller.addCurrency);
 router.post("/remove", controller.removeCurrency);
 

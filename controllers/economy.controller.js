@@ -147,11 +147,50 @@ exports.getPendingRewards = async (req, res) => {
                 error: "No rewards found"
             });
 
-        await Reward.deleteMany({playerId});
+ //       await Reward.deleteMany({playerId});
 
-        res.json({rewards});
+        res.status(200).json({rewards});
     } catch (err) {
         console.error("Get pending rewards error:", err);
         res.status(500).json({error: "Server error"});
+    }
+};
+
+exports.claimReward = async (req, res) => {
+    try {
+        const { rewardId } = req.body;
+
+        if (!rewardId)
+            return res.status(400).json({ error: "rewardId required" });
+
+        // Delete reward first (atomic check)
+        const reward = await Reward.findOneAndDelete({ _id: rewardId });
+
+        if (!reward)
+            return res.status(404).json({ error: "Reward not found or already claimed" });
+
+        if (!reward.type || typeof reward.amount !== "number")
+            return res.status(400).json({ error: "Invalid reward data" });
+
+        // Atomic currency increment
+        await Player.updateOne(
+            { playerId: reward.playerId },
+            { $inc: { [`currencies.${reward.type}`]: reward.amount } }
+        );
+
+        const updatedPlayer = await Player.findOne({ playerId: reward.playerId });
+
+        if (!updatedPlayer)
+            return res.status(404).json({ error: "Player not found" });
+
+        await sendInventoryUpdate(updatedPlayer);
+
+        // for later: remove claimed rewards from pending rewards list in player document
+        
+        res.json({ success: true });
+
+    } catch (err) {
+        console.error("Claim reward error:", err);
+        res.status(500).json({ error: "Server error" });
     }
 };

@@ -100,21 +100,24 @@ async function endRound(round) {
     // Reward logic (unchanged)
     const reward = new Reward({
         playerId: winnerId,
+        gameRound: round,
         type: "GOLD",
         amount: 1000,
-        game: round.minigame
+        game: round.minigame,
+        score: winnerScore
     });
 
     await reward.save();
 
-    const player = await Player.findOne({ playerId: winnerId });
-    if (player) {
-        player.currencies["GOLD"] =
-            (player.currencies["GOLD"] || 0) + 1000;
-
-        await player.save();
-        await sendInventoryUpdate(player);
-    }
+    // const player = await Player.findOne({ playerId: winnerId });
+    // if (player) {
+    //     //Todo: remove immediate reward booking and wait for reward shown in client
+    //     player.currencies["GOLD"] =
+    //         (player.currencies["GOLD"] || 0) + 1000;
+    //
+    //     await player.save();
+    //     await sendInventoryUpdate(player);
+    // }
 
     const payload = {
         roundId: round.roundId,
