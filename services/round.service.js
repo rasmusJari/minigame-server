@@ -28,7 +28,7 @@ function formatRoundTopPlayer(minigameRound) {
     }
 
     return {
-        roundId: minigameRound.roundId,
+        roundId: minigameRound._id,
         isActive: minigameRound.isActive,
         endsAt: minigameRound.endsAt,
         scores: topPlayer ? [topPlayer] : [],
@@ -61,14 +61,14 @@ async function getOrCreateGameRound(minigame, playerId) {
     if (round) return round;
 
     // No eligible round → create new one
-    const lastRound = await GameRound
-        .findOne({ minigame })
-        .sort({ roundId: -1 });
-
-    const nextRoundNumber = lastRound ? lastRound.roundId + 1 : 1;
+    // const lastRound = await GameRound
+    //     .findOne({ minigame })
+    //     .sort({ roundId: -1 });
+    //
+    // const nextRoundNumber = lastRound ? lastRound.roundId + 1 : 1;
 
     round = await GameRound.create({
-        roundId: nextRoundNumber,
+        // roundId: nextRoundNumber,
         minigame,
         isActive: true,
         endsAt: new Date(Date.now() + 60 * 60 * 1000),
@@ -77,7 +77,7 @@ async function getOrCreateGameRound(minigame, playerId) {
     });
 
     await pusher.trigger("public-channel", "round-started", {
-        roundId: round.roundId,
+        roundId: round._id,
         endsAt: round.endsAt
     });
 
@@ -121,7 +121,7 @@ async function endRound(round) {
     // }
 
     const payload = {
-        roundId: round.roundId,
+        roundId: round._id,
         winnerId,
         winnerScore,
         scores: scoresObj,
@@ -191,7 +191,7 @@ exports.joinRound = async (req, res) => {
             });
         }
 
-        console.log(`Player ${playerId} joined round ${round.roundId} (players: ${round.players.length}/${round.maxPlayers})`);
+        console.log(`Player ${playerId} joined round ${round._id} (players: ${round.players.length}/${round.maxPlayers})`);
         return res.status(200).json({
             roundId: round._id,
             seed: round.seed
@@ -313,7 +313,7 @@ exports.submitScore = async (req, res) => {
 
     await pusher.trigger("public-channel", "round-updated", {
         game: minigame,
-        roundId: freshRound.roundId,
+        roundId: freshRound._id,
         topPlayer: topEntry?.[0] ?? null,
         topScore: topEntry?.[1] ?? null,
         scores: Object.entries(scoresObj).map(([id, s]) => ({
@@ -323,7 +323,7 @@ exports.submitScore = async (req, res) => {
     });
 
     res.json({
-        roundId: freshRound.roundId,
+        roundId: freshRound._id,
         isActive: freshRound.isActive,
         endsAt: freshRound.endsAt,
         topPlayer: topEntry?.[0] ?? null,
@@ -350,7 +350,7 @@ exports.getRound = async (req, res) => {
         .sort((a, b) => b[1] - a[1])[0];
 
     res.json({
-        roundId: round.roundId,
+        roundId: round._id,
         isActive: round.isActive,
         endsAt: round.endsAt,
         winner: round.winner,
