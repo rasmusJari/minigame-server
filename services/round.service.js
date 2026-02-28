@@ -278,7 +278,7 @@ exports.submitScore = async (req, res) => {
 
     const freshRound = await GameRound.findById(round._id);
 
-    console.log("send submit score to player channel", playerId, minigame, score);
+    console.log("send game round end event to player");
     await pusher.trigger(
         `private-player.${playerId}`,
         "score-submitted",

@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const gameRoundSchema = new mongoose.Schema({
-    // roundId: { type: Number, required: true, unique: true },
+    roundId: { type: Number, required: true },
     minigame: { type: String, required: true },
     scores: { type: Map, of: Number, default: {} }, // playerId -> score
     isActive: { type: Boolean, default: false },
