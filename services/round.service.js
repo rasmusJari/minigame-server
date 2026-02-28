@@ -8,6 +8,7 @@ const GameRound = require("../models/GameRound");
 // In-memory rounds store
 // ---------------------
 const rounds = {};
+let roundCounter = 1;
 // { minigame: { roundId, isActive, endsAt, scores, winner } }
 
 
@@ -126,16 +127,116 @@ async function endRound(round) {
         scores: scoresObj,
         endedAt: Date.now()
     };
-
+    
     await pusher.trigger("public-channel", "round-ended", payload);
 
     return payload;
 }
 
+function generateSeed() {
+    return Math.floor(Math.random() * 1_000_000_000);
+}
 
 // ---------------------
 // Public API
 // ---------------------
+
+// Join game round
+exports.joinRound = async (req, res) => {
+    try {
+        const { playerId, minigame} = req.body;
+
+        if (!playerId) {
+            console.error("playerId missing in joinRound");
+            return res.status(400).json({error: "playerId required"});
+        }
+        
+        if (!minigame) {
+            console.error("minigame missing in joinRound");
+            return res.status(400).json({error: "minigame required"});
+        }
+
+        const game = await Game.findOne({ identifier: minigame }).exec();
+        
+        if (!game) {
+            console.error("Game not found for identifier:", minigame);
+            return res.status(404).json({error: "Game not found"});
+        }
+        
+        const maxPlayers = game.maxPlayers ?? 2;
+        console.log("Max players:", maxPlayers);
+        // Try to join existing open round atomically
+        let round = await GameRound.findOneAndUpdate(
+            {
+                minigame: minigame,
+                status: "open",
+                players: { $ne: playerId },
+                $expr: { $lt: [{ $size: "$players" }, maxPlayers] }
+            },
+            {
+                $push: { players: playerId }
+            }
+        );
+
+        // If no round available → create one
+        if (!round) {
+            console.log("create new round for minigame:", minigame);
+            const nextRoundId = roundCounter + 1
+            round = await GameRound.create({
+                minigame: minigame,
+                seed: generateSeed(),
+                players: [playerId],
+                maxPlayers: maxPlayers,
+                status: "open"
+            });
+        }
+
+        console.log(`Player ${playerId} joined round ${round.roundId} (players: ${round.players.length}/${round.maxPlayers})`);
+        return res.status(200).json({
+            roundId: round._id,
+            seed: round.seed
+        });
+
+    } catch (err) {
+        console.error("Join round error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+};
+
+
+// ---------------------
+
+// Submit score for current round
+exports.submitScoreToRound = async (req, res) => {
+    try {
+        const { playerId, roundId, score } = req.body;
+
+        if (!playerId || roundId == null || score == null)
+            return res.status(400).json({ error: "Missing fields" });
+
+        const round = await GameRound.findOne({ roundId });
+
+        if (!round)
+            return res.status(404).json({ error: "Round not found" });
+
+        if (!round.players.includes(playerId))
+            return res.status(403).json({ error: "Player not in this round" });
+        
+        // Save score here (your existing logic)
+
+        // If round is full and all scores submitted → close it
+        if (round.players.length >= round.maxPlayers) {
+            round.status = "complete";
+            await round.save();
+        }
+
+        res.status(200).json({ success: true });
+
+    } catch (err) {
+        console.error("Submit score error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+};
 
 // 1️⃣ Player submits score
 exports.submitScore = async (req, res) => {
@@ -177,6 +278,7 @@ exports.submitScore = async (req, res) => {
 
     const freshRound = await GameRound.findById(round._id);
 
+    console.log("send submit score to player channel", playerId, minigame, score);
     await pusher.trigger(
         `private-player.${playerId}`,
         "score-submitted",
@@ -199,6 +301,7 @@ exports.submitScore = async (req, res) => {
     // 5️⃣ End round if full
     if (freshRound.numberOfPlayers >= maxPlayers) {
         await endRound(freshRound);
+        
         return res.json({ message: "Round ended" });
     }
 
