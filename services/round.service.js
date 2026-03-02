@@ -260,7 +260,7 @@ exports.submitScoreToRound = async (req, res) => {
 
         // If round is full and all scores submitted → close it
         if (round.players.length >= round.maxPlayers) {
-            round.status = "complete";
+            round.status = "completed";
             await round.save();
         }
         
