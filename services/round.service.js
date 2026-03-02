@@ -163,7 +163,32 @@ exports.joinRound = async (req, res) => {
             console.error("Game not found for identifier:", minigame);
             return res.status(404).json({error: "Game not found"});
         }
+
+        const player = await Player.findOne({playerId});
+        if (!player) {
+            console.error("Player not found for id:", playerId);
+            return res.status(404).json({error: "Player not found"});
+        }
         
+        // check player wallet for game entry fee
+        var entryFee = game.costPerPlay;
+        console.log("game entry fee:", entryFee);
+        
+        if (player.currencies[entryFee.currency] < entryFee.amount) {
+            console.error("Player does not have enough funds to join the game.");
+            return res.status(403).json({error: "Insufficient funds"});
+        }
+        console.log("Player has enough funds, proceeding to join round.");
+        console.log("Player wallet before deduction:", player.currencies);
+        player.currencies[entryFee.currency] -= entryFee.amount;
+        await player.save();
+        console.log("Player wallet after deduction:", player.currencies);
+        await pusher.trigger(
+            `private-player.${player.playerId}`,
+            "inventory-updated",
+            {inventory: player.currencies}
+        );
+  
         const maxPlayers = game.maxPlayers ?? 2;
         console.log("Max players:", maxPlayers);
         // Try to join existing open round atomically
