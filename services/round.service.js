@@ -274,7 +274,7 @@ exports.submitScoreToRound = async (req, res) => {
         
         
         // check if game round is completed
-        if(round.scores.size >= round.players.length) {
+        if(round.status === "completed") {
             console.log("game round completed, ending round with id:", roundId);
             await endRound(round);
         }
