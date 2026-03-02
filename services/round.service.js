@@ -85,53 +85,80 @@ async function getOrCreateGameRound(minigame, playerId) {
 }
 
 async function endRound(round) {
-    const scoresObj = Object.fromEntries(round.scores);
-
-    const entries = Object.entries(scoresObj);
-    if (entries.length === 0) return null;
-
-    const [winnerId, winnerScore] =
-        entries.sort((a, b) => b[1] - a[1])[0];
-
-    round.winner = winnerId;
-    round.isActive = false;
-    round.status = 'completed';
-
-    await round.save();
-
-    // Reward logic (unchanged)
-    const reward = new Reward({
-        playerId: winnerId,
-        gameRound: round,
-        type: "GOLD",
-        amount: 1000,
-        game: round.minigame,
-        score: winnerScore
-    });
-
-    await reward.save();
-
-    // const player = await Player.findOne({ playerId: winnerId });
-    // if (player) {
-    //     //Todo: remove immediate reward booking and wait for reward shown in client
-    //     player.currencies["GOLD"] =
-    //         (player.currencies["GOLD"] || 0) + 1000;
-    //
-    //     await player.save();
-    //     await sendInventoryUpdate(player);
-    // }
-
-    const payload = {
-        roundId: round._id,
-        winnerId,
-        winnerScore,
-        scores: scoresObj,
-        endedAt: Date.now()
-    };
     
-    await pusher.trigger("public-channel", "round-ended", payload);
+    console.log("endRound called for round:", round._id);
+    try {
 
-    return payload;
+        const scoresMap = round.scores || new Map();
+
+        if (scoresMap.size === 0) {
+            console.log("no entries found in scores map");
+            return null;
+        }
+
+// Find top scorer
+        let winnerId = null;
+        let winnerScore = -Infinity;
+
+        for (const [playerId, score] of scoresMap) {
+            if (score > winnerScore) {
+                winnerScore = score;
+                winnerId = playerId;
+            }
+        }
+
+        console.log("winnerId:", winnerId, "score:", winnerScore);
+
+        // winnerId =
+        //     entries.sort((a, b) => b[1] - a[1])[0];
+        
+        round.winner = winnerId;
+        round.isActive = false;
+        round.status = 'completed';
+
+        console.log("saving game round");
+        await round.save();
+
+        // Reward logic (unchanged)
+        console.log("create reward for winner:", winnerId, "with score:", winnerScore);
+        const reward = new Reward({
+            playerId: winnerId,
+            gameRound: round,
+            type: "GOLD",
+            amount: 1000,
+            game: round.minigame,
+            score: winnerScore
+        });
+
+        await reward.save();
+
+        // const player = await Player.findOne({ playerId: winnerId });
+        // if (player) {
+        //     //Todo: remove immediate reward booking and wait for reward shown in client
+        //     player.currencies["GOLD"] =
+        //         (player.currencies["GOLD"] || 0) + 1000;
+        //
+        //     await player.save();
+        //     await sendInventoryUpdate(player);
+        // }
+
+        console.log("generate payload for round end event");
+        const payload = {
+            roundId: round._id,
+            winnerId,
+            winnerScore,
+            scores: scoresMap,
+            endedAt: Date.now()
+        };
+
+        // todo, only notify participants instead of whole channel
+        console.log("game round end event", payload);
+        await pusher.trigger("public-channel", "round-ended", payload);
+
+        return payload;
+    } catch (error) {
+        console.error("Error ending round:", error);
+    }
 }
 
 function generateSeed() {
@@ -236,6 +263,7 @@ exports.joinRound = async (req, res) => {
 // Submit score for current round
 exports.submitScoreToRound = async (req, res) => {
     try {
+        console.log("submitScoreToRound called with body:", req.body);
         const { playerId, roundId, score } = req.body;
 
         if (!playerId || roundId == null || score == null) {
@@ -256,16 +284,21 @@ exports.submitScoreToRound = async (req, res) => {
             console.error("Round not found with id:", roundId, "for player:", playerId);
             return res.status(403).json({error: "Player not in this round"});
         }
+        
         // Save score here (your existing logic)
+        round.scores.set(playerId, score);
+        
+        console.log("Score saved for player:", playerId, "in round:", roundId, "with score:", score);
 
         // If round is full and all scores submitted → close it
         if (round.players.length >= round.maxPlayers) {
+            console.log("round is full, closing round with id:", roundId);
             round.status = "completed";
-            await round.save();
         }
-        
+
+        await round.save();
         // send score submitted websocket event
-        console.log("send game round end event to player");
+        console.log("send score submitted to player");
         await pusher.trigger(
             `private-player.${playerId}`,
             "score-submitted",
