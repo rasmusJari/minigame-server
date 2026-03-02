@@ -95,6 +95,7 @@ async function endRound(round) {
 
     round.winner = winnerId;
     round.isActive = false;
+    round.status = 'completed';
 
     await round.save();
 
@@ -236,6 +237,21 @@ exports.submitScoreToRound = async (req, res) => {
         if (round.players.length >= round.maxPlayers) {
             round.status = "complete";
             await round.save();
+        }
+        
+        // send score submitted websocket event
+        console.log("send game round end event to player");
+        await pusher.trigger(
+            `private-player.${playerId}`,
+            "score-submitted",
+            { roundId, score }
+        );
+        
+        
+        // check if game round is completed
+        if(round.scores.size >= round.players.length) {
+            console.log("game round completed, ending round with id:", roundId);
+            await endRound(round);
         }
 
         console.log("Round score:", score);
