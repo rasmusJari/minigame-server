@@ -175,13 +175,14 @@ exports.joinRound = async (req, res) => {
             },
             {
                 $push: { players: playerId }
+            }, {
+                upsert: false
             }
         );
 
-        // If no round available → create one
+        // // If no round available → create one
         if (!round) {
             console.log("create new round for minigame:", minigame);
-            const nextRoundId = roundCounter + 1
             round = await GameRound.create({
                 minigame: minigame,
                 seed: generateSeed(),
@@ -211,17 +212,24 @@ exports.submitScoreToRound = async (req, res) => {
     try {
         const { playerId, roundId, score } = req.body;
 
-        if (!playerId || roundId == null || score == null)
-            return res.status(400).json({ error: "Missing fields" });
-
-        const round = await GameRound.findOne({ roundId });
-
-        if (!round)
-            return res.status(404).json({ error: "Round not found" });
-
-        if (!round.players.includes(playerId))
-            return res.status(403).json({ error: "Player not in this round" });
+        if (!playerId || roundId == null || score == null) {
+            console.error("missing fields in submitScoreToRound:", { playerId, roundId, score });
+            return res.status(400).json({error: "Missing fields"});
+        }
         
+        console.log("finding game round with id:", roundId, "for player:", playerId);
+
+        const round = await GameRound.findById(roundId);
+
+        if (!round) {
+            console.error("Round not found");
+            return res.status(404).json({error: "Round not found"});
+        }
+
+        if (!round.players.includes(playerId)) {
+            console.error("Round not found with id:", roundId, "for player:", playerId);
+            return res.status(403).json({error: "Player not in this round"});
+        }
         // Save score here (your existing logic)
 
         // If round is full and all scores submitted → close it
@@ -230,6 +238,7 @@ exports.submitScoreToRound = async (req, res) => {
             await round.save();
         }
 
+        console.log("Round score:", score);
         res.status(200).json({ success: true });
 
     } catch (err) {
@@ -271,8 +280,7 @@ exports.submitScore = async (req, res) => {
     await GameRound.updateOne(
         { _id: round._id },
         {
-            $set: { [`scores.${playerId}`]: score },
-            $inc: { numberOfPlayers: 1 }
+            $set: { [`scores.${playerId}`]: score }
         }
     );
 
