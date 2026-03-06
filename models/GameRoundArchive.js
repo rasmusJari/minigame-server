@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 
+
+
 const gameRoundSchema = new mongoose.Schema({
     minigame: { type: String, required: true },
     scores: { type: Map, of: Number, default: {} }, // playerId -> score

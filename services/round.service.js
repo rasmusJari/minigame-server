@@ -86,6 +86,7 @@ async function getOrCreateGameRound(minigame, playerId) {
 }
 
 async function archiveRound(round) {
+    console.log("archiving round with id:", round._id);
     await GameRoundsArchive.create(round.toObject());
     await GameRoundsActive.deleteOne({ _id: round._id });
 }
