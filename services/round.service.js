@@ -2,7 +2,8 @@ const Player = require("../models/Player");
 const Reward = require("../models/Reward");
 const pusher = require("../config/pusher");
 const Game = require("../models/Game");
-const GameRound = require("../models/GameRound");
+const GameRoundsActive = require("../models/GameRound");
+const GameRoundsArchive = require("../models/GameRoundArchive");
 
 // ---------------------
 // In-memory rounds store
@@ -52,7 +53,7 @@ async function sendInventoryUpdate(player) {
 async function getOrCreateGameRound(minigame, playerId) {
 
     // Find active round where player has NOT submitted
-    let round = await GameRound.findOne({
+    let round = await GameRoundsActive.findOne({
         minigame,
         isActive: true,
         [`scores.${playerId}`]: { $exists: false }
@@ -67,7 +68,7 @@ async function getOrCreateGameRound(minigame, playerId) {
     //
     // const nextRoundNumber = lastRound ? lastRound.roundId + 1 : 1;
 
-    round = await GameRound.create({
+    round = await GameRoundsActive.create({
         // roundId: nextRoundNumber,
         minigame,
         isActive: true,
@@ -82,6 +83,11 @@ async function getOrCreateGameRound(minigame, playerId) {
     });
 
     return round;
+}
+
+async function archiveRound(round) {
+    await GameRoundsArchive.create(round.toObject());
+    await GameRoundsActive.deleteOne({ _id: round._id });
 }
 
 async function endRound(round) {
@@ -155,6 +161,8 @@ async function endRound(round) {
         console.log("game round end event", payload);
         await pusher.trigger("public-channel", "round-ended", payload);
 
+        await archiveRound(round);
+        
         return payload;
     } catch (error) {
         console.error("Error ending round:", error);
@@ -219,7 +227,7 @@ exports.joinRound = async (req, res) => {
         const maxPlayers = game.maxPlayers ?? 2;
         console.log("Max players:", maxPlayers);
         // Try to join existing open round atomically
-        let round = await GameRound.findOneAndUpdate(
+        let round = await GameRoundsActive.findOneAndUpdate(
             {
                 minigame: minigame,
                 status: "open",
@@ -236,7 +244,7 @@ exports.joinRound = async (req, res) => {
         // // If no round available → create one
         if (!round) {
             console.log("create new round for minigame:", minigame);
-            round = await GameRound.create({
+            round = await GameRoundsActive.create({
                 minigame: minigame,
                 seed: generateSeed(),
                 players: [playerId],
@@ -266,6 +274,10 @@ exports.submitScoreToRound = async (req, res) => {
         console.log("submitScoreToRound called with body:", req.body);
         const { playerId, roundId, score } = req.body;
 
+        if (req.headers["x-api-key"] !== process.env.INTERNAL_SECRET) {
+            return res.status(403).json({ error: "Forbidden" });
+        }
+        
         if (!playerId || roundId == null || score == null) {
             console.error("missing fields in submitScoreToRound:", { playerId, roundId, score });
             return res.status(400).json({error: "Missing fields"});
@@ -273,7 +285,7 @@ exports.submitScoreToRound = async (req, res) => {
         
         console.log("finding game round with id:", roundId, "for player:", playerId);
 
-        const round = await GameRound.findById(roundId);
+        const round = await GameRoundsActive.findById(roundId);
 
         if (!round) {
             console.error("Round not found");
@@ -351,14 +363,14 @@ exports.submitScore = async (req, res) => {
     // 3️⃣ Atomic update:
     //    - set score
     //    - increment numberOfPlayers
-    await GameRound.updateOne(
+    await GameRoundsActive.updateOne(
         { _id: round._id },
         {
             $set: { [`scores.${playerId}`]: score }
         }
     );
 
-    const freshRound = await GameRound.findById(round._id);
+    const freshRound = await GameRoundsActive.findById(round._id);
 
     console.log("send game round end event to player");
     await pusher.trigger(
@@ -418,7 +430,7 @@ exports.submitScore = async (req, res) => {
 exports.getRound = async (req, res) => {
     const { minigame } = req.params;
 
-    const round = await GameRound.findOne({
+    const round = await GameRoundsActive.findOne({
         minigame,
         isActive: true
     });
